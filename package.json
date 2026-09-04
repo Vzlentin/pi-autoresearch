@@ -1,0 +1,34 @@
+{
+  "name": "pi-autoresearch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Harness-owned autonomous experiment loop for Pi: propose, run, measure, keep or revert",
+  "keywords": [
+    "pi-package",
+    "autoresearch"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test:unit": "node --no-warnings tests/test_config.mjs && node --no-warnings tests/test_ledger.mjs && node --no-warnings tests/test_proposal.mjs && node --no-warnings tests/test_loop.mjs",
+    "test": "npm run typecheck && npm run test:unit"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/autoresearch.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "~0.84.3",
+    "@earendil-works/pi-coding-agent": "~0.84.3"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.84.3",
+    "@earendil-works/pi-coding-agent": "0.84.3",
+    "@types/node": "22.19.7",
+    "typescript": "5.9.3"
+  }
+}
