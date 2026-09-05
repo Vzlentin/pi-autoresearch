@@ -17,16 +17,18 @@ pi install "$PWD"
 In the target experiment repository (a clean git worktree):
 
 ```bash
-/autoresearch init          # writes autoresearch.json and a program.md stub
-# edit autoresearch.json and program.md
+/autoresearch init          # writes .autoresearch/config.json and .autoresearch/program.md
+# edit .autoresearch/config.json and .autoresearch/program.md
 /autoresearch start [tag]   # creates or reuses branch autoresearch/<tag> and runs
 /autoresearch status        # ledger summary
 /autoresearch stop          # abort after the current step; in-flight changes revert
 ```
 
-The loop runs in the background of the Pi session. A widget shows the current iteration, best metric, and spend. State lives in `.autoresearch/` (ledger, per-iteration run logs), which is auto-added to `.git/info/exclude`.
+The loop runs in the background of the Pi session. A widget shows the current iteration, best metric, and spend.
 
-## Configuration: `autoresearch.json`
+All harness state lives in `.autoresearch/` (config, program, ledger, per-iteration run logs), which is added to `.git/info/exclude` automatically. Nothing from the harness needs to be committed to the target repository; custom evaluator scripts can live in `.autoresearch/` too. The experiment commits themselves land on the local `autoresearch/<tag>` branch, which is the keep/revert mechanism; do not push it.
+
+## Configuration: `.autoresearch/config.json`
 
 ```json
 {
@@ -34,7 +36,7 @@ The loop runs in the background of the Pi session. A widget shows the current it
   "metric": { "pattern": "^val_bpb:\\s+([0-9.eE+-]+)", "direction": "min" },
   "editablePaths": ["train.py"],
   "readOnlyPaths": ["prepare.py"],
-  "programPath": "program.md",
+  "programPath": ".autoresearch/program.md",
   "timeoutSeconds": 600,
   "maxIterations": 100,
   "model": "openai-codex/gpt-5.6-sol",

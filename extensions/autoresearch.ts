@@ -1,11 +1,11 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { CONFIG_FILE_NAME, CONFIG_TEMPLATE, loadConfig } from "./config.ts";
+import { CONFIG_RELATIVE_PATH, CONFIG_TEMPLATE, STATE_DIR, loadConfig } from "./config.ts";
 import { createProposalCompleter, type ActiveModel } from "./completion.ts";
 import { bestEntry, readLedger } from "./ledger.ts";
-import { runResearchLoop, STATE_DIR, type LoopStatus } from "./loop.ts";
+import { ensureExcluded, runResearchLoop, type LoopStatus } from "./loop.ts";
 import { PROPOSER_SYSTEM_PROMPT, renderProposalPrompt } from "./proposal.ts";
 
 const WIDGET_ID = "autoresearch";
@@ -44,16 +44,22 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 	};
 
 	const init = async (ctx: ExtensionCommandContext) => {
-		const configPath = join(ctx.cwd, CONFIG_FILE_NAME);
+		const stateDir = join(ctx.cwd, STATE_DIR);
+		await mkdir(stateDir, { recursive: true });
 		try {
-			await writeFile(configPath, `${JSON.stringify(CONFIG_TEMPLATE, null, 2)}\n`, { flag: "wx" });
-			ctx.ui.notify(`Created ${CONFIG_FILE_NAME}. Edit it before starting a run.`, "info");
+			await ensureExcluded(ctx.cwd);
 		} catch {
-			ctx.ui.notify(`${CONFIG_FILE_NAME} already exists.`, "warning");
+			ctx.ui.notify(`Not a git repository; ${STATE_DIR}/ was not added to .git/info/exclude.`, "warning");
 		}
 		try {
-			await writeFile(join(ctx.cwd, "program.md"), PROGRAM_TEMPLATE, { flag: "wx" });
-			ctx.ui.notify("Created program.md stub.", "info");
+			await writeFile(join(stateDir, "config.json"), `${JSON.stringify(CONFIG_TEMPLATE, null, 2)}\n`, { flag: "wx" });
+			ctx.ui.notify(`Created ${CONFIG_RELATIVE_PATH}. Edit it before starting a run.`, "info");
+		} catch {
+			ctx.ui.notify(`${CONFIG_RELATIVE_PATH} already exists.`, "warning");
+		}
+		try {
+			await writeFile(join(stateDir, "program.md"), PROGRAM_TEMPLATE, { flag: "wx" });
+			ctx.ui.notify(`Created ${STATE_DIR}/program.md stub.`, "info");
 		} catch {
 			// Keep the existing program file.
 		}

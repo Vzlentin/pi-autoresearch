@@ -2,11 +2,10 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { Usage } from "@earendil-works/pi-ai";
-import type { AutoresearchConfig } from "./config.ts";
+import { STATE_DIR, type AutoresearchConfig } from "./config.ts";
 import { appendLedger, bestEntry, isBetter, readLedger, type LedgerEntry } from "./ledger.ts";
 import { parseProposal, type ProposalInput } from "./proposal.ts";
 
-export const STATE_DIR = ".autoresearch";
 const CRASH_LOG_TAIL_LINES = 60;
 const PROPOSE_ATTEMPTS = 3;
 const PROPOSE_RETRY_DELAY_MS = 10_000;
@@ -102,7 +101,7 @@ export function extractMetric(output: string, pattern: string): number | null {
 	return Number.isFinite(value) ? value : null;
 }
 
-async function ensureExcluded(root: string): Promise<void> {
+export async function ensureExcluded(root: string): Promise<void> {
 	const gitDir = await git(root, "rev-parse", "--git-dir");
 	const excludePath = resolve(root, gitDir, "info", "exclude");
 	await mkdir(dirname(excludePath), { recursive: true });

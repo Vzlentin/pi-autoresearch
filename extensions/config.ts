@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-export const CONFIG_FILE_NAME = "autoresearch.json";
+export const STATE_DIR = ".autoresearch";
+export const CONFIG_RELATIVE_PATH = `${STATE_DIR}/config.json`;
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
@@ -38,13 +39,13 @@ export const CONFIG_TEMPLATE: unknown = {
 	metric: { pattern: "^val_bpb:\\s+([0-9.eE+-]+)", direction: "min" },
 	editablePaths: ["train.py"],
 	readOnlyPaths: ["prepare.py"],
-	programPath: "program.md",
+	programPath: `${STATE_DIR}/program.md`,
 	timeoutSeconds: 600,
 	maxIterations: 100,
 };
 
 function fail(message: string): never {
-	throw new Error(`${CONFIG_FILE_NAME}: ${message}`);
+	throw new Error(`${CONFIG_RELATIVE_PATH}: ${message}`);
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -127,7 +128,7 @@ export function parseConfig(raw: unknown): AutoresearchConfig {
 export async function loadConfig(root: string): Promise<AutoresearchConfig> {
 	let text: string;
 	try {
-		text = await readFile(join(root, CONFIG_FILE_NAME), "utf8");
+		text = await readFile(join(root, STATE_DIR, "config.json"), "utf8");
 	} catch {
 		fail(`not found in ${root}. Run "/autoresearch init" to create a template.`);
 	}
