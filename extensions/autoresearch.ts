@@ -202,19 +202,32 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 			return { text, usage: message.usage };
 		};
 
-		ctx.ui.notify(`autoresearch started: branch autoresearch/${tag}, model ${model.provider}/${model.id}`, "info");
+		post([
+			`autoresearch ${tag}: starting run`,
+			`Branch: autoresearch/${tag}`,
+			`Model: ${model.provider}/${model.id} | Thinking: ${thinkingLevel}`,
+			`Stop at: ${config.maxIterations === 0 ? "no iteration limit" : `iteration ${config.maxIterations}`} | Experiment timeout: ${config.timeoutSeconds}s`,
+			`Use /autoresearch stop to stop the run.`,
+		].join("\n"));
 		void runResearchLoop(ctx.cwd, config, tag, { propose, onStatus }, abort.signal)
 			.then((summary) => {
 				const best = summary.best
 					? `best ${summary.best.metric} at iteration ${summary.best.iteration} (${summary.best.description})`
 					: "no kept result";
-				post(
-					`autoresearch ${summary.reason} after iteration ${summary.iterations} on ${summary.branch}: ${best}. ` +
-						`Cost $${summary.totalCost.toFixed(2)}, ${summary.totalTokens} tokens. Ledger: ${summary.ledgerPath}`,
-				);
+				post([
+					`autoresearch ${tag}: ${summary.reason === "aborted" ? "run stopped" : "run finished (iteration limit reached)"}`,
+					`Iteration: ${summary.iterations} | ${best}`,
+					`Cost: $${summary.totalCost.toFixed(2)} | Tokens: ${summary.totalTokens}`,
+					`Branch: ${summary.branch}`,
+					`Ledger: ${summary.ledgerPath}`,
+				].join("\n"));
 			})
 			.catch((error) => {
-				post(`autoresearch stopped: ${error instanceof Error ? error.message : String(error)}`);
+				post([
+					`autoresearch ${tag}: ${abort.signal.aborted ? "run stopped" : "run failed"}`,
+					`Reason: ${error instanceof Error ? error.message : String(error)}`,
+					`Run files: ${runDirectory(ctx.cwd, tag)}`,
+				].join("\n"));
 			})
 			.finally(() => {
 				controller = undefined;

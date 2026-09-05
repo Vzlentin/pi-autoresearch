@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,6 +9,8 @@ process.env.XDG_STATE_HOME = await mkdtemp(join(tmpdir(), "autoresearch-state-")
 
 const { extractMetric, runResearchLoop, validateTag } = await import("../extensions/loop.ts");
 import { readLedger } from "../extensions/ledger.ts";
+import autoresearchExtension from "../extensions/autoresearch.ts";
+import { stateDir } from "../extensions/config.ts";
 
 function git(root, ...args) {
 	return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -205,6 +207,75 @@ test("runResearchLoop refuses a dirty worktree", async () => {
 		/not clean/,
 	);
 	await rm(root, { recursive: true, force: true });
+});
+
+test("extension posts startup and finish messages for completion, stop, and failure", async (t) => {
+	for (const outcome of ["finished", "stopped", "failed"]) {
+		await t.test(outcome, { timeout: 10_000 }, async () => {
+			const root = await makeRepo();
+			const dir = stateDir(root);
+			await mkdir(dir, { recursive: true });
+			await writeFile(join(dir, "config.json"), JSON.stringify({
+				...config,
+				maxIterations: outcome === "stopped" ? 0 : 1,
+				runCommand: outcome === "failed" ? "exit 1" : config.runCommand,
+			}));
+			const messages = [];
+			const done = Promise.withResolvers();
+			let command;
+			const ctx = {
+				cwd: root,
+				mode: "tui",
+				model: { provider: "test", id: "model", api: "pi-messages", reasoning: false },
+				thinkingLevel: "off",
+				modelRegistry: {
+					complete: async () => {
+						if (outcome === "stopped") {
+							await command.handler("stop", ctx);
+							throw new Error("proposal aborted");
+						}
+						return {
+							stopReason: "stop",
+							content: [{ type: "text", text: proposal("5") }],
+							usage: { totalTokens: 100, cost: { total: 0.01 } },
+						};
+					},
+				},
+				ui: {
+					notify() {},
+					setWidget(_id, value) { if (value === undefined) done.resolve(); },
+				},
+			};
+			autoresearchExtension({
+				registerCommand(_name, definition) { command = definition; },
+				on() {},
+				sendMessage(message) { messages.push(message); },
+			});
+			try {
+				await command.handler("start messages", ctx);
+				assert.match(messages[0].content, /autoresearch messages: starting run/);
+				assert.match(messages[0].content, /Model: test\/model \| Thinking: off/);
+				assert.match(messages[0].content, /Use \/autoresearch stop/);
+				assert.match(messages[0].content, outcome === "stopped" ? /no iteration limit/ : /Stop at: iteration 1/);
+				await done.promise;
+				const finish = messages.at(-1).content;
+				assert.match(finish, new RegExp(`autoresearch messages: run ${outcome}`));
+				assert.equal(messages.filter((message) => /: run (finished|stopped|failed)/.test(message.content)).length, 1);
+				assert.ok(messages.every((message) => message.display && message.customType === "autoresearch"));
+				if (outcome === "finished") {
+					assert.match(finish, /iteration limit reached/);
+					assert.match(finish, /best 5 at iteration 1/);
+					assert.match(finish, /Cost: \$0\.01 \| Tokens: 100/);
+					assert.ok(finish.includes(`Ledger: ${join(dir, "runs/messages/ledger.jsonl")}`));
+				} else {
+					assert.match(finish, outcome === "failed" ? /baseline run failed/ : /proposal aborted/);
+				}
+			} finally {
+				await rm(root, { recursive: true, force: true });
+				await rm(dir, { recursive: true, force: true });
+			}
+		});
+	}
 });
 
 test("runResearchLoop aborts between iterations", async () => {
