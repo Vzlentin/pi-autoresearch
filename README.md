@@ -24,7 +24,7 @@ In the target experiment repository (a clean git worktree):
 /autoresearch stop          # abort after the current step; in-flight changes revert
 ```
 
-The loop runs in the background of the Pi session. A widget shows the current iteration, best metric, and spend.
+The loop runs in the background of the Pi session, outside the agent turn: the proposer is a direct single-shot model call, so no turns or tool calls appear in the transcript and nothing enters the agent's context. Visibility comes from a widget with the current iteration, best metric, and spend, plus one short transcript message per ledger entry (status, metric, delta versus the previous best, description) and a final summary message. These messages are part of the session context, so the agent can answer questions about the run. Each proposer response is also saved as `logs/iter-N.proposal.md` next to the run log. Harness commits use `--no-verify`; the run command is the gate, not repository hooks.
 
 All harness state lives outside the repository, in `$XDG_STATE_HOME/pi-autoresearch/<absolute repository path>/` (default `~/.local/state/pi-autoresearch/...`), so nothing needs to be ignored or committed in shared projects. `config.json` and `program.md` are shared; each run keeps its own ledger and per-iteration logs under `runs/<tag>/`, so runs with different tags never mix and a run can be resumed by starting the same tag again. Starting without a tag creates a new timestamped run with a fresh baseline. Custom evaluator scripts can live in the state directory too; reference them by absolute path in `runCommand`. The experiment commits themselves land on the local `autoresearch/<tag>` branch, which is the keep/revert mechanism; do not push it.
 

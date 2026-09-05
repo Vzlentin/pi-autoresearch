@@ -11,6 +11,12 @@ import { PROPOSER_SYSTEM_PROMPT, renderProposalPrompt } from "./proposal.ts";
 const WIDGET_ID = "autoresearch";
 const SUBCOMMANDS = ["init", "start", "stop", "status"];
 
+function formatDelta(metric: number | null, previousBest: number | null): string {
+	if (metric === null || previousBest === null || previousBest === 0) return "";
+	const percent = ((metric - previousBest) / Math.abs(previousBest)) * 100;
+	return ` (${percent >= 0 ? "+" : ""}${percent.toFixed(2)}% vs best)`;
+}
+
 const PROGRAM_TEMPLATE = `# Research program
 
 ## Goal
@@ -154,7 +160,17 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 		controller = abort;
 		runningTag = tag;
 
+		const post = (content: string) => pi.sendMessage({ customType: "autoresearch", content, display: true });
+		let postedIteration = -1;
+		let previousBest: number | null = null;
 		const onStatus = (loopStatus: LoopStatus) => {
+			const entry = loopStatus.last;
+			if (entry && entry.iteration !== postedIteration) {
+				postedIteration = entry.iteration;
+				const delta = entry.status === "invalid" ? "" : formatDelta(entry.metric, previousBest);
+				post(`autoresearch ${tag} #${entry.iteration} ${entry.status} ${formatMetric(entry.metric)}${delta}: ${entry.description}`);
+				previousBest = loopStatus.best?.metric ?? previousBest;
+			}
 			if (ctx.mode !== "tui") return;
 			const best = loopStatus.best
 				? `best ${loopStatus.best.metric} @ ${loopStatus.best.iteration}`
@@ -192,14 +208,13 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 				const best = summary.best
 					? `best ${summary.best.metric} at iteration ${summary.best.iteration} (${summary.best.description})`
 					: "no kept result";
-				ctx.ui.notify(
+				post(
 					`autoresearch ${summary.reason} after iteration ${summary.iterations} on ${summary.branch}: ${best}. ` +
 						`Cost $${summary.totalCost.toFixed(2)}, ${summary.totalTokens} tokens. Ledger: ${summary.ledgerPath}`,
-					"info",
 				);
 			})
 			.catch((error) => {
-				ctx.ui.notify(`autoresearch stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
+				post(`autoresearch stopped: ${error instanceof Error ? error.message : String(error)}`);
 			})
 			.finally(() => {
 				controller = undefined;

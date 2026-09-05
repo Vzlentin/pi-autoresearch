@@ -293,6 +293,7 @@ export async function runResearchLoop(
 		const response = await proposeWithRetry(deps, input, signal);
 		totalCost += response.usage?.cost.total ?? 0;
 		totalTokens += response.usage?.totalTokens ?? 0;
+		await writeFile(join(logsDir, `iter-${iteration}.proposal.md`), response.text, "utf8");
 		if (signal.aborted) break;
 
 		const parsed = parseProposal(response.text, config.editablePaths);
@@ -328,9 +329,16 @@ export async function runResearchLoop(
 			});
 			continue;
 		}
-		await git(root, "add", "--", ...parsed.files.map((file) => file.path));
-		await git(root, "commit", "-m", `autoresearch ${iteration}: ${parsed.description}`);
-		const commit = await git(root, "rev-parse", "--short", "HEAD");
+		let commit: string;
+		try {
+			await git(root, "add", "--", ...parsed.files.map((file) => file.path));
+			// Harness commits are experiment checkpoints; the run command is the gate, not repository hooks.
+			await git(root, "commit", "--no-verify", "-m", `autoresearch ${iteration}: ${parsed.description}`);
+			commit = await git(root, "rev-parse", "--short", "HEAD");
+		} catch (error) {
+			await git(root, "reset", "--hard", preHead);
+			throw error;
+		}
 
 		const outcome = await runExperiment(root, config, logsDir, iteration, signal);
 		if (signal.aborted) {

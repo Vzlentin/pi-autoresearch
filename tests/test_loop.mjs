@@ -102,6 +102,8 @@ test("runResearchLoop: baseline, keep, discard, crash, invalid", async () => {
 	assert.equal(await readFile(join(root, "value.txt"), "utf8"), "5\n");
 	// Branch history: initial commit plus the one kept experiment commit.
 	assert.equal(git(root, "rev-list", "--count", "HEAD"), "2");
+	// Each proposer response is saved next to the run log.
+	assert.equal(await readFile(join(summary.ledgerPath, "..", "logs", "iter-1.proposal.md"), "utf8"), proposals[0]);
 	// The crash log tail is offered to the proposer on the next iteration.
 	assert.equal(proposeInputs[2].lastCrashLog, undefined);
 	assert.match(proposeInputs[3].lastCrashLog, /boom/);
@@ -177,6 +179,21 @@ test("runResearchLoop keeps runs with different tags independent", async () => {
 	assert.notEqual(second.ledgerPath, first.ledgerPath);
 	assert.equal((await readLedger(first.ledgerPath)).length, 2);
 	assert.equal((await readLedger(second.ledgerPath)).length, 2);
+	await rm(root, { recursive: true, force: true });
+});
+
+test("runResearchLoop bypasses repository commit hooks", async () => {
+	const root = await makeRepo();
+	await writeFile(join(root, ".git", "hooks", "pre-commit"), "#!/bin/sh\necho hook ran >&2\nexit 1\n", { mode: 0o755 });
+	const summary = await runResearchLoop(
+		root,
+		{ ...config, maxIterations: 1 },
+		"hooks",
+		{ propose: async () => ({ text: proposal("3") }) },
+		new AbortController().signal,
+	);
+	assert.equal(summary.best?.metric, 3);
+	assert.equal(git(root, "rev-list", "--count", "HEAD"), "2");
 	await rm(root, { recursive: true, force: true });
 });
 
