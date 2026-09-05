@@ -101,6 +101,10 @@ export function extractMetric(output: string, pattern: string): number | null {
 	return Number.isFinite(value) ? value : null;
 }
 
+export function runDirectory(root: string, tag: string): string {
+	return join(root, STATE_DIR, "runs", tag);
+}
+
 export async function ensureExcluded(root: string): Promise<void> {
 	const gitDir = await git(root, "rev-parse", "--git-dir");
 	const excludePath = resolve(root, gitDir, "info", "exclude");
@@ -196,9 +200,9 @@ export async function runResearchLoop(
 	deps: LoopDeps,
 	signal: AbortSignal,
 ): Promise<LoopSummary> {
-	const stateDir = join(root, STATE_DIR);
-	const logsDir = join(stateDir, "logs");
-	const ledgerPath = join(stateDir, "ledger.jsonl");
+	const runDir = runDirectory(root, tag);
+	const logsDir = join(runDir, "logs");
+	const ledgerPath = join(runDir, "ledger.jsonl");
 	await mkdir(logsDir, { recursive: true });
 	await ensureExcluded(root);
 

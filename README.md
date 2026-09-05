@@ -20,13 +20,13 @@ In the target experiment repository (a clean git worktree):
 /autoresearch init          # writes .autoresearch/config.json and .autoresearch/program.md
 # edit .autoresearch/config.json and .autoresearch/program.md
 /autoresearch start [tag]   # creates or reuses branch autoresearch/<tag> and runs
-/autoresearch status        # ledger summary
+/autoresearch status [tag]  # ledger summary for a run (default: active or most recent run)
 /autoresearch stop          # abort after the current step; in-flight changes revert
 ```
 
 The loop runs in the background of the Pi session. A widget shows the current iteration, best metric, and spend.
 
-All harness state lives in `.autoresearch/` (config, program, ledger, per-iteration run logs), which is added to `.git/info/exclude` automatically. Nothing from the harness needs to be committed to the target repository; custom evaluator scripts can live in `.autoresearch/` too. The experiment commits themselves land on the local `autoresearch/<tag>` branch, which is the keep/revert mechanism; do not push it.
+All harness state lives in `.autoresearch/`, which is added to `.git/info/exclude` automatically. `config.json` and `program.md` are shared; each run keeps its own ledger and per-iteration logs under `runs/<tag>/`, so runs with different tags never mix and a run can be resumed by starting the same tag again. Starting without a tag creates a new timestamped run with a fresh baseline. Nothing from the harness needs to be committed to the target repository; custom evaluator scripts can live in `.autoresearch/` too. The experiment commits themselves land on the local `autoresearch/<tag>` branch, which is the keep/revert mechanism; do not push it.
 
 ## Configuration: `.autoresearch/config.json`
 
@@ -60,7 +60,7 @@ All harness state lives in `.autoresearch/` (config, program, ledger, per-iterat
 2. Each iteration: render a fresh proposer prompt (program, ledger tail, crash log tail if the previous run crashed, editable and read-only files), get one proposal, apply it, commit on `autoresearch/<tag>`.
 3. Run `runCommand` with the timeout, extract the metric from the output.
 4. Keep the commit if the metric improves on the best kept entry; otherwise `git reset --hard` back.
-5. Append a `keep` / `discard` / `crash` / `invalid` entry to `.autoresearch/ledger.jsonl`.
+5. Append a `keep` / `discard` / `crash` / `invalid` entry to `.autoresearch/runs/<tag>/ledger.jsonl`.
 
 Runs are resumable: starting again with the same repository continues from the existing ledger and skips the baseline. Stopping (`/autoresearch stop`, session shutdown) aborts the in-flight step and reverts uncommitted changes.
 

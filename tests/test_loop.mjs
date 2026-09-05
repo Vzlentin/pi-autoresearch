@@ -57,6 +57,7 @@ test("runResearchLoop: baseline, keep, discard, crash, invalid", async () => {
 	assert.equal(summary.reason, "max-iterations");
 	assert.equal(summary.iterations, 4);
 	assert.equal(summary.branch, "autoresearch/test");
+	assert.equal(summary.ledgerPath, join(root, ".autoresearch", "runs", "test", "ledger.jsonl"));
 	assert.equal(summary.best?.metric, 5);
 	assert.equal(git(root, "rev-parse", "--abbrev-ref", "HEAD"), "autoresearch/test");
 
@@ -115,6 +116,42 @@ test("runResearchLoop resumes from an existing ledger without a new baseline", a
 	assert.equal(proposeCalls, 1);
 	assert.equal(second.best?.metric, 4);
 	assert.equal(await readFile(join(root, "value.txt"), "utf8"), "4\n");
+	await rm(root, { recursive: true, force: true });
+});
+
+test("runResearchLoop keeps runs with different tags independent", async () => {
+	const root = await makeRepo();
+	const first = await runResearchLoop(
+		root,
+		{ ...config, maxIterations: 1 },
+		"alpha",
+		{ propose: async () => ({ text: proposal("8") }) },
+		new AbortController().signal,
+	);
+	assert.equal(first.best?.metric, 8);
+
+	const inputs = [];
+	const second = await runResearchLoop(
+		root,
+		{ ...config, maxIterations: 1 },
+		"beta",
+		{
+			propose: async (input) => {
+				inputs.push(input);
+				return { text: proposal("9") };
+			},
+		},
+		new AbortController().signal,
+	);
+
+	// The second run started from its own baseline, not from alpha's ledger.
+	assert.equal(inputs.length, 1);
+	assert.equal(inputs[0].iteration, 1);
+	assert.equal(inputs[0].entries.length, 1);
+	assert.equal(inputs[0].entries[0].description, "baseline");
+	assert.notEqual(second.ledgerPath, first.ledgerPath);
+	assert.equal((await readLedger(first.ledgerPath)).length, 2);
+	assert.equal((await readLedger(second.ledgerPath)).length, 2);
 	await rm(root, { recursive: true, force: true });
 });
 

@@ -1,11 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { CONFIG_RELATIVE_PATH, CONFIG_TEMPLATE, STATE_DIR, loadConfig } from "./config.ts";
 import { createProposalCompleter, type ActiveModel } from "./completion.ts";
 import { bestEntry, readLedger } from "./ledger.ts";
-import { ensureExcluded, runResearchLoop, type LoopStatus } from "./loop.ts";
+import { ensureExcluded, runDirectory, runResearchLoop, type LoopStatus } from "./loop.ts";
 import { PROPOSER_SYSTEM_PROMPT, renderProposalPrompt } from "./proposal.ts";
 
 const WIDGET_ID = "autoresearch";
@@ -33,6 +33,23 @@ function defaultTag(): string {
 
 function formatMetric(value: number | null): string {
 	return value === null ? "-" : String(value);
+}
+
+async function latestRunTag(root: string): Promise<string | undefined> {
+	const runsDir = join(root, STATE_DIR, "runs");
+	let names: string[];
+	try {
+		names = await readdir(runsDir);
+	} catch {
+		return undefined;
+	}
+	let latest: { tag: string; mtimeMs: number } | undefined;
+	for (const name of names) {
+		const info = await stat(join(runsDir, name)).catch(() => undefined);
+		if (!info?.isDirectory()) continue;
+		if (latest === undefined || info.mtimeMs > latest.mtimeMs) latest = { tag: name, mtimeMs: info.mtimeMs };
+	}
+	return latest?.tag;
 }
 
 export default function autoresearchExtension(pi: ExtensionAPI) {
@@ -65,10 +82,15 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 		}
 	};
 
-	const status = async (ctx: ExtensionCommandContext) => {
-		const entries = await readLedger(join(ctx.cwd, STATE_DIR, "ledger.jsonl"));
+	const status = async (ctx: ExtensionCommandContext, tagArgument: string | undefined) => {
+		const tag = tagArgument ?? runningTag ?? (await latestRunTag(ctx.cwd));
+		if (tag === undefined) {
+			ctx.ui.notify(`No runs under ${STATE_DIR}/runs/. Use "/autoresearch start".`, "info");
+			return;
+		}
+		const entries = await readLedger(join(runDirectory(ctx.cwd, tag), "ledger.jsonl"));
 		if (entries.length === 0) {
-			ctx.ui.notify(`No ledger at ${STATE_DIR}/ledger.jsonl. Use "/autoresearch start".`, "info");
+			ctx.ui.notify(`No ledger for run ${tag}.`, "info");
 			return;
 		}
 		let direction: "min" | "max" = "min";
@@ -82,7 +104,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 		const best = bestEntry(entries, direction);
 		const last = entries[entries.length - 1];
 		const lines = [
-			controller ? `Running on tag ${runningTag}.` : "Not running.",
+			`Run ${tag}: ${controller && runningTag === tag ? "running" : "not running"}.`,
 			`Entries: ${entries.length} (${[...counts.entries()].map(([key, count]) => `${key} ${count}`).join(", ")})`,
 			best ? `Best: ${best.metric} at iteration ${best.iteration} (${best.description})` : "Best: none kept yet",
 			`Last: iteration ${last.iteration} ${last.status} ${formatMetric(last.metric)} (${last.description})`,
@@ -179,7 +201,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 	};
 
 	pi.registerCommand("autoresearch", {
-		description: "Autonomous experiment loop: init | start [tag] | stop | status",
+		description: "Autonomous experiment loop: init | start [tag] | stop | status [tag]",
 		getArgumentCompletions: (prefix) => {
 			const items = SUBCOMMANDS.filter((name) => name.startsWith(prefix)).map((name) => ({
 				value: name,
@@ -192,7 +214,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 			const subcommand = parts[0] ?? "status";
 			if (subcommand === "init") return init(ctx);
 			if (subcommand === "start") return start(ctx, parts[1]);
-			if (subcommand === "status") return status(ctx);
+			if (subcommand === "status") return status(ctx, parts[1]);
 			if (subcommand === "stop") {
 				if (!controller) {
 					ctx.ui.notify("No autoresearch run is active.", "info");
@@ -202,7 +224,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 				}
 				return;
 			}
-			ctx.ui.notify(`Unknown subcommand: ${subcommand}. Use init | start [tag] | stop | status.`, "error");
+			ctx.ui.notify(`Unknown subcommand: ${subcommand}. Use init | start [tag] | stop | status [tag].`, "error");
 		},
 	});
 
