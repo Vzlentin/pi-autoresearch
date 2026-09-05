@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { extractMetric, runResearchLoop } from "../extensions/loop.ts";
+import { extractMetric, runResearchLoop, validateTag } from "../extensions/loop.ts";
 import { readLedger } from "../extensions/ledger.ts";
 
 function git(root, ...args) {
@@ -35,6 +35,25 @@ const config = {
 function proposal(value) {
 	return ["<<<DESCRIPTION>>>", `set value to ${value}`, "<<<FILE: value.txt>>>", value, "<<<END FILE>>>"].join("\n");
 }
+
+test("validateTag accepts branch-safe names and rejects the rest", () => {
+	for (const tag of ["acv-graph-v1", "2026-09-05-07-51", "run_2", "a.b", "x"]) {
+		assert.doesNotThrow(() => validateTag(tag), tag);
+	}
+	for (const tag of ["", "acv graph", "a/b", "-lead", ".hidden", "a..b", "trail.", "a".repeat(65), "tag\n"]) {
+		assert.throws(() => validateTag(tag), /invalid tag/, JSON.stringify(tag));
+	}
+});
+
+test("runResearchLoop rejects an invalid tag before touching git", async () => {
+	const root = await makeRepo();
+	await assert.rejects(
+		runResearchLoop(root, config, "bad/tag", { propose: async () => ({ text: "" }) }, new AbortController().signal),
+		/invalid tag/,
+	);
+	assert.equal(git(root, "rev-parse", "--abbrev-ref", "HEAD"), "main");
+	await rm(root, { recursive: true, force: true });
+});
 
 test("extractMetric parses the first capture group", () => {
 	assert.equal(extractMetric("noise\nmetric: 1.25\n", "^metric:\\s+([0-9.]+)"), 1.25);

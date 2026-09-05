@@ -101,7 +101,18 @@ export function extractMetric(output: string, pattern: string): number | null {
 	return Number.isFinite(value) ? value : null;
 }
 
+const TAG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+export function validateTag(tag: string): void {
+	if (!TAG_PATTERN.test(tag) || tag.endsWith(".") || tag.includes("..")) {
+		throw new Error(
+			`invalid tag "${tag}": use 1-64 letters, digits, ".", "_" or "-", starting with a letter or digit`,
+		);
+	}
+}
+
 export function runDirectory(root: string, tag: string): string {
+	validateTag(tag);
 	return join(root, STATE_DIR, "runs", tag);
 }
 

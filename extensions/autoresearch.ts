@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { CONFIG_RELATIVE_PATH, CONFIG_TEMPLATE, STATE_DIR, loadConfig } from "./config.ts";
 import { createProposalCompleter, type ActiveModel } from "./completion.ts";
 import { bestEntry, readLedger } from "./ledger.ts";
-import { ensureExcluded, runDirectory, runResearchLoop, type LoopStatus } from "./loop.ts";
+import { ensureExcluded, runDirectory, runResearchLoop, validateTag, type LoopStatus } from "./loop.ts";
 import { PROPOSER_SYSTEM_PROMPT, renderProposalPrompt } from "./proposal.ts";
 
 const WIDGET_ID = "autoresearch";
@@ -88,7 +88,13 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(`No runs under ${STATE_DIR}/runs/. Use "/autoresearch start".`, "info");
 			return;
 		}
-		const entries = await readLedger(join(runDirectory(ctx.cwd, tag), "ledger.jsonl"));
+		let entries;
+		try {
+			entries = await readLedger(join(runDirectory(ctx.cwd, tag), "ledger.jsonl"));
+		} catch (error) {
+			ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+			return;
+		}
 		if (entries.length === 0) {
 			ctx.ui.notify(`No ledger for run ${tag}.`, "info");
 			return;
@@ -117,6 +123,13 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(`A run is already active on tag ${runningTag}. Use "/autoresearch stop" first.`, "warning");
 			return;
 		}
+		const tag = tagArgument ?? defaultTag();
+		try {
+			validateTag(tag);
+		} catch (error) {
+			ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+			return;
+		}
 		let config;
 		try {
 			config = await loadConfig(ctx.cwd);
@@ -141,7 +154,6 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 		}
 		const thinkingLevel = config.thinkingLevel ?? ctx.thinkingLevel ?? "off";
 		const complete = createProposalCompleter(ctx.modelRegistry);
-		const tag = tagArgument ?? defaultTag();
 		const abort = new AbortController();
 		controller = abort;
 		runningTag = tag;
