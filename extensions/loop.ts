@@ -219,7 +219,7 @@ export async function runResearchLoop(
 	await git(root, "checkout", ...(branchExists ? [branch] : ["-b", branch]));
 
 	const entries = await readLedger(ledgerPath);
-	let iteration = entries.length > 0 ? Math.max(...entries.map((entry) => entry.iteration)) : -1;
+	let iteration = entries.length > 0 ? Math.max(...entries.map((entry) => entry.iteration)) : 0;
 	let totalCost = 0;
 	let totalTokens = 0;
 	const direction = config.metric.direction;
@@ -239,9 +239,9 @@ export async function runResearchLoop(
 		entries.push(entry);
 		emit();
 	};
+	emit();
 
 	if (entries.length === 0) {
-		iteration = 0;
 		const outcome = await runExperiment(root, config, logsDir, 0, signal);
 		if (signal.aborted) {
 			return { reason: "aborted", iterations: 0, best: undefined, totalCost, totalTokens, branch, ledgerPath };
