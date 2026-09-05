@@ -2,10 +2,10 @@ import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { CONFIG_RELATIVE_PATH, CONFIG_TEMPLATE, STATE_DIR, loadConfig } from "./config.ts";
+import { CONFIG_TEMPLATE, loadConfig, stateDir } from "./config.ts";
 import { createProposalCompleter, type ActiveModel } from "./completion.ts";
 import { bestEntry, readLedger } from "./ledger.ts";
-import { ensureExcluded, runDirectory, runResearchLoop, validateTag, type LoopStatus } from "./loop.ts";
+import { runDirectory, runResearchLoop, validateTag, type LoopStatus } from "./loop.ts";
 import { PROPOSER_SYSTEM_PROMPT, renderProposalPrompt } from "./proposal.ts";
 
 const WIDGET_ID = "autoresearch";
@@ -36,7 +36,7 @@ function formatMetric(value: number | null): string {
 }
 
 async function latestRunTag(root: string): Promise<string | undefined> {
-	const runsDir = join(root, STATE_DIR, "runs");
+	const runsDir = join(stateDir(root), "runs");
 	let names: string[];
 	try {
 		names = await readdir(runsDir);
@@ -61,22 +61,18 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 	};
 
 	const init = async (ctx: ExtensionCommandContext) => {
-		const stateDir = join(ctx.cwd, STATE_DIR);
-		await mkdir(stateDir, { recursive: true });
+		const dir = stateDir(ctx.cwd);
+		await mkdir(dir, { recursive: true });
+		const configPath = join(dir, "config.json");
 		try {
-			await ensureExcluded(ctx.cwd);
+			await writeFile(configPath, `${JSON.stringify(CONFIG_TEMPLATE, null, 2)}\n`, { flag: "wx" });
+			ctx.ui.notify(`Created ${configPath}. Edit it before starting a run.`, "info");
 		} catch {
-			ctx.ui.notify(`Not a git repository; ${STATE_DIR}/ was not added to .git/info/exclude.`, "warning");
+			ctx.ui.notify(`${configPath} already exists.`, "warning");
 		}
 		try {
-			await writeFile(join(stateDir, "config.json"), `${JSON.stringify(CONFIG_TEMPLATE, null, 2)}\n`, { flag: "wx" });
-			ctx.ui.notify(`Created ${CONFIG_RELATIVE_PATH}. Edit it before starting a run.`, "info");
-		} catch {
-			ctx.ui.notify(`${CONFIG_RELATIVE_PATH} already exists.`, "warning");
-		}
-		try {
-			await writeFile(join(stateDir, "program.md"), PROGRAM_TEMPLATE, { flag: "wx" });
-			ctx.ui.notify(`Created ${STATE_DIR}/program.md stub.`, "info");
+			await writeFile(join(dir, "program.md"), PROGRAM_TEMPLATE, { flag: "wx" });
+			ctx.ui.notify(`Created ${join(dir, "program.md")} stub.`, "info");
 		} catch {
 			// Keep the existing program file.
 		}
@@ -85,7 +81,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 	const status = async (ctx: ExtensionCommandContext, tagArgument: string | undefined) => {
 		const tag = tagArgument ?? runningTag ?? (await latestRunTag(ctx.cwd));
 		if (tag === undefined) {
-			ctx.ui.notify(`No runs under ${STATE_DIR}/runs/. Use "/autoresearch start".`, "info");
+			ctx.ui.notify(`No runs under ${join(stateDir(ctx.cwd), "runs")}. Use "/autoresearch start".`, "info");
 			return;
 		}
 		let entries;

@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { Usage } from "@earendil-works/pi-ai";
-import { STATE_DIR, type AutoresearchConfig } from "./config.ts";
+import { stateDir, type AutoresearchConfig } from "./config.ts";
 import { appendLedger, bestEntry, isBetter, readLedger, type LedgerEntry } from "./ledger.ts";
 import { parseProposal, type ProposalInput } from "./proposal.ts";
 
@@ -113,23 +113,7 @@ export function validateTag(tag: string): void {
 
 export function runDirectory(root: string, tag: string): string {
 	validateTag(tag);
-	return join(root, STATE_DIR, "runs", tag);
-}
-
-export async function ensureExcluded(root: string): Promise<void> {
-	const gitDir = await git(root, "rev-parse", "--git-dir");
-	const excludePath = resolve(root, gitDir, "info", "exclude");
-	await mkdir(dirname(excludePath), { recursive: true });
-	let current = "";
-	try {
-		current = await readFile(excludePath, "utf8");
-	} catch {
-		// Missing exclude file is normal.
-	}
-	if (!current.split("\n").includes(`${STATE_DIR}/`)) {
-		const prefix = current === "" || current.endsWith("\n") ? current : `${current}\n`;
-		await writeFile(excludePath, `${prefix}${STATE_DIR}/\n`, "utf8");
-	}
+	return join(stateDir(root), "runs", tag);
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -215,7 +199,6 @@ export async function runResearchLoop(
 	const logsDir = join(runDir, "logs");
 	const ledgerPath = join(runDir, "ledger.jsonl");
 	await mkdir(logsDir, { recursive: true });
-	await ensureExcluded(root);
 
 	for (const path of [...config.editablePaths, ...config.readOnlyPaths]) {
 		await readFile(join(root, path), "utf8").catch(() => {
@@ -224,9 +207,7 @@ export async function runResearchLoop(
 	}
 
 	const porcelain = await git(root, "status", "--porcelain");
-	const dirty = porcelain
-		.split("\n")
-		.filter((line) => line.trim() !== "" && !line.slice(3).startsWith(`${STATE_DIR}/`));
+	const dirty = porcelain.split("\n").filter((line) => line.trim() !== "");
 	if (dirty.length > 0) {
 		throw new Error(`worktree is not clean:\n${dirty.join("\n")}`);
 	}
@@ -299,7 +280,9 @@ export async function runResearchLoop(
 			runCommand: config.runCommand,
 			metricPattern: config.metric.pattern,
 			direction,
-			program: config.programPath ? await readFile(join(root, config.programPath), "utf8") : undefined,
+			program: config.programPath
+				? await readFile(resolve(stateDir(root), config.programPath), "utf8")
+				: undefined,
 			files,
 			readOnlyFiles,
 			entries: [...entries],

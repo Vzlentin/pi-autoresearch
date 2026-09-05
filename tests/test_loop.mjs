@@ -4,7 +4,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { extractMetric, runResearchLoop, validateTag } from "../extensions/loop.ts";
+
+process.env.XDG_STATE_HOME = await mkdtemp(join(tmpdir(), "autoresearch-state-"));
+
+const { extractMetric, runResearchLoop, validateTag } = await import("../extensions/loop.ts");
 import { readLedger } from "../extensions/ledger.ts";
 
 function git(root, ...args) {
@@ -76,7 +79,10 @@ test("runResearchLoop: baseline, keep, discard, crash, invalid", async () => {
 	assert.equal(summary.reason, "max-iterations");
 	assert.equal(summary.iterations, 4);
 	assert.equal(summary.branch, "autoresearch/test");
-	assert.equal(summary.ledgerPath, join(root, ".autoresearch", "runs", "test", "ledger.jsonl"));
+	assert.equal(
+		summary.ledgerPath,
+		join(process.env.XDG_STATE_HOME, "pi-autoresearch", root, "runs", "test", "ledger.jsonl"),
+	);
 	assert.equal(summary.best?.metric, 5);
 	assert.equal(git(root, "rev-parse", "--abbrev-ref", "HEAD"), "autoresearch/test");
 
@@ -99,7 +105,7 @@ test("runResearchLoop: baseline, keep, discard, crash, invalid", async () => {
 	// The crash log tail is offered to the proposer on the next iteration.
 	assert.equal(proposeInputs[2].lastCrashLog, undefined);
 	assert.match(proposeInputs[3].lastCrashLog, /boom/);
-	// The state directory is excluded from git.
+	// Harness state lives outside the repository.
 	assert.equal(git(root, "status", "--porcelain"), "");
 
 	await rm(root, { recursive: true, force: true });

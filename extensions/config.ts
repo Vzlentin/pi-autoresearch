@@ -1,8 +1,11 @@
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const STATE_DIR = ".autoresearch";
-export const CONFIG_RELATIVE_PATH = `${STATE_DIR}/config.json`;
+/** Per-repository harness state under $XDG_STATE_HOME (default ~/.local/state), mirroring the repository path. */
+export function stateDir(root: string): string {
+	return join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "pi-autoresearch", root);
+}
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
@@ -22,7 +25,7 @@ export interface AutoresearchConfig {
 	editablePaths: string[];
 	/** Relative paths shown to the proposer as read-only context. */
 	readOnlyPaths: string[];
-	/** Optional markdown file with the research goal and constraints. */
+	/** Optional markdown file with the research goal and constraints, resolved against the state directory. */
 	programPath?: string;
 	/** Hard timeout for one run. A run that exceeds it is killed and counted as a crash. */
 	timeoutSeconds: number;
@@ -39,13 +42,13 @@ export const CONFIG_TEMPLATE: unknown = {
 	metric: { pattern: "^val_bpb:\\s+([0-9.eE+-]+)", direction: "min" },
 	editablePaths: ["train.py"],
 	readOnlyPaths: ["prepare.py"],
-	programPath: `${STATE_DIR}/program.md`,
+	programPath: "program.md",
 	timeoutSeconds: 600,
 	maxIterations: 100,
 };
 
 function fail(message: string): never {
-	throw new Error(`${CONFIG_RELATIVE_PATH}: ${message}`);
+	throw new Error(`config.json: ${message}`);
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -128,9 +131,9 @@ export function parseConfig(raw: unknown): AutoresearchConfig {
 export async function loadConfig(root: string): Promise<AutoresearchConfig> {
 	let text: string;
 	try {
-		text = await readFile(join(root, STATE_DIR, "config.json"), "utf8");
+		text = await readFile(join(stateDir(root), "config.json"), "utf8");
 	} catch {
-		fail(`not found in ${root}. Run "/autoresearch init" to create a template.`);
+		fail(`not found in ${stateDir(root)}. Run "/autoresearch init" to create a template.`);
 	}
 	let raw: unknown;
 	try {
