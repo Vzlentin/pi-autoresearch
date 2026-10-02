@@ -7,6 +7,7 @@ import {
 	type ModelsApiStreamOptions,
 	type StreamOptions,
 	type ThinkingLevel,
+	type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import {
 	adjustMaxTokensForThinking,
@@ -15,6 +16,7 @@ import {
 	clampReasoning,
 } from "@earendil-works/pi-ai/api/simple-options";
 import { resolveGoogleThinkingLevel } from "@earendil-works/pi-ai/api/google-shared";
+import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 type ModelRegistry = ExtensionContext["modelRegistry"];
@@ -40,7 +42,7 @@ function activeReasoning(model: ActiveModel, thinkingLevel: SessionThinkingLevel
 
 function baseOptions(
 	model: ActiveModel,
-	context: Context,
+	context: TranscriptContext,
 	reasoning: ActiveReasoning,
 	signal: AbortSignal,
 ): StreamOptions {
@@ -180,7 +182,8 @@ function completeKnownModel(
 			reasoning,
 		} satisfies ModelsApiStreamOptions<"pi-messages">);
 	}
-	const base = baseOptions(model, context, reasoning, signal);
+	const transcript = normalizeContext(context);
+	const base = baseOptions(model, transcript, reasoning, signal);
 
 	if (hasApi(model, "anthropic-messages")) {
 		if (!reasoning) {
@@ -197,7 +200,7 @@ function completeKnownModel(
 			} satisfies ModelsApiStreamOptions<"anthropic-messages">);
 		}
 		const adjusted = adjustMaxTokensForThinking(base.maxTokens, model.maxTokens, reasoning);
-		const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
+		const maxTokens = clampMaxTokensToContext(model, transcript, adjusted.maxTokens);
 		return modelRegistry.complete(model, context, {
 			...base,
 			maxTokens,
@@ -261,7 +264,7 @@ function completeKnownModel(
 			} satisfies ModelsApiStreamOptions<"bedrock-converse-stream">);
 		}
 		const adjusted = adjustMaxTokensForThinking(base.maxTokens, model.maxTokens, reasoning);
-		const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
+		const maxTokens = clampMaxTokensToContext(model, transcript, adjusted.maxTokens);
 		const budgetLevel = clampReasoning(reasoning);
 		if (!budgetLevel) throw new Error("Bedrock reasoning budget requires an active thinking level");
 		return modelRegistry.complete(model, context, {
