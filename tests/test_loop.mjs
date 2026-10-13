@@ -223,21 +223,27 @@ test("extension posts startup and finish messages for completion, stop, and fail
 			const messages = [];
 			const done = Promise.withResolvers();
 			let command;
+			const completionOptions = [];
 			const ctx = {
 				cwd: root,
 				mode: "tui",
 				model: { provider: "test", id: "model", api: "pi-messages", reasoning: false },
 				thinkingLevel: "off",
 				modelRegistry: {
-					complete: async () => {
-						if (outcome === "stopped") {
-							await command.handler("stop", ctx);
-							throw new Error("proposal aborted");
-						}
+					streamSimple: (_model, _context, options) => {
+						completionOptions.push(options);
 						return {
-							stopReason: "stop",
-							content: [{ type: "text", text: proposal("5") }],
-							usage: { totalTokens: 100, cost: { total: 0.01 } },
+							result: async () => {
+								if (outcome === "stopped") {
+									await command.handler("stop", ctx);
+									throw new Error("proposal aborted");
+								}
+								return {
+									stopReason: "stop",
+									content: [{ type: "text", text: proposal("5") }],
+									usage: { totalTokens: 100, cost: { total: 0.01 } },
+								};
+							},
 						};
 					},
 				},
@@ -267,6 +273,10 @@ test("extension posts startup and finish messages for completion, stop, and fail
 					assert.match(finish, /best 5 at iteration 1/);
 					assert.match(finish, /Cost: \$0\.01 \| Tokens: 100/);
 					assert.ok(finish.includes(`Ledger: ${join(dir, "runs/messages/ledger.jsonl")}`));
+					assert.equal(completionOptions.length, 1);
+					const { signal, ...options } = completionOptions[0];
+					assert.ok(signal instanceof AbortSignal);
+					assert.deepEqual(options, { reasoning: undefined, maxRetries: 0, cacheRetention: "none" });
 				} else {
 					assert.match(finish, outcome === "failed" ? /baseline run failed/ : /proposal aborted/);
 				}
